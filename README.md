@@ -55,3 +55,8 @@ curl -X POST https://<your-worker>.workers.dev \
   -H "Content-Type: application/json" \
   -d '{"text":"test note","timestamp":'"$(date +%s)"'}'
 ```
+
+Or just follow the setup and try it out!
+
+<img width="330" height="114" alt="image" src="https://github.com/user-attachments/assets/179f6e02-9193-42d8-a53d-65a64395534e" />
+

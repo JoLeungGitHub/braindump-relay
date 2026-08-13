@@ -11,8 +11,9 @@ test('builds a branded Discord embed from a Brain Dump note', () => {
 
   assert.equal(payload.username, 'Brain Dump');
   assert.equal(payload.embeds[0].description, 'Remember the milk');
+  assert.equal(payload.embeds[0].color, 0xff9900);
   assert.equal(payload.embeds[0].timestamp, '2023-11-14T22:13:20.000Z');
-  assert.equal(payload.embeds[0].footer.text, 'Captured from Pebble');
+  assert.equal(payload.embeds[0].footer, undefined);
   assert.deepEqual(payload.allowed_mentions, { parse: [] });
 });
 
@@ -42,8 +43,8 @@ test('splits long notes without losing any text', () => {
     payloads.map((payload) => payload.embeds[0].description).join(''),
     note,
   );
-  assert.equal(payloads[0].embeds[0].footer.text, 'Captured from Pebble • Part 1 of 2');
-  assert.equal(payloads[1].embeds[0].footer.text, 'Captured from Pebble • Part 2 of 2');
+  assert.equal(payloads[0].embeds[0].footer.text, 'Part 1 of 2');
+  assert.equal(payloads[1].embeds[0].footer.text, 'Part 2 of 2');
 });
 
 test('forwards the embed payload to Discord', async (t) => {

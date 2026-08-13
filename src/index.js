@@ -59,13 +59,13 @@ function formatTimestamp(value) {
 
 function parseColor(value) {
   if (typeof value !== 'string') {
-    return 0x7c5cff;
+    return 0xff9900;
   }
 
   const normalized = value.trim().replace(/^#/, '');
   return /^[0-9a-f]{6}$/i.test(normalized)
     ? Number.parseInt(normalized, 16)
-    : 0x7c5cff;
+    : 0xff9900;
 }
 
 export function createDiscordPayloads(body, env = {}) {
@@ -73,14 +73,14 @@ export function createDiscordPayloads(body, env = {}) {
   const timestamp = formatTimestamp(body?.timestamp);
 
   return chunks.map((description, index) => {
-    const footer = chunks.length === 1
-      ? 'Captured from Pebble'
-      : `Captured from Pebble • Part ${index + 1} of ${chunks.length}`;
     const embed = {
       description,
       color: parseColor(env.DISCORD_EMBED_COLOR),
-      footer: { text: footer },
     };
+
+    if (chunks.length > 1) {
+      embed.footer = { text: `Part ${index + 1} of ${chunks.length}` };
+    }
 
     if (timestamp) {
       embed.timestamp = timestamp;

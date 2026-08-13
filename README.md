@@ -26,9 +26,9 @@ timestamp that renders correctly in each viewer's own timezone.
 ## How it works
 
 1. Brain Dump POSTs `{ text, timestamp }` to this Worker's URL.
-2. The Worker builds a Discord embed containing the note, the capture time,
-   and a small `Captured from Pebble` footer. Mentions are disabled so captured
-   text cannot unexpectedly ping a Discord user.
+2. The Worker builds a Discord embed containing the note and capture time.
+   Mentions are disabled so captured text cannot unexpectedly ping a Discord
+   user.
 3. The Worker POSTs that to `DISCORD_WEBHOOK_URL` and returns its result.
 
 Notes longer than Discord's 4,096-character embed limit are split across as
@@ -59,7 +59,7 @@ Worker variables to customize them:
 
 - `DISCORD_USERNAME` — sender name (default: `Brain Dump`)
 - `DISCORD_AVATAR_URL` — sender icon URL (default: Brain Dump's app icon)
-- `DISCORD_EMBED_COLOR` — six-digit hex accent, such as `#7c5cff`
+- `DISCORD_EMBED_COLOR` — six-digit hex accent (default: `#ff9900`)
 
 ## Testing
 

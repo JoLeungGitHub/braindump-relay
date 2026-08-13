@@ -13,9 +13,9 @@ like:
 { "text": "...", "timestamp": 1234567890 }
 ```
 
-Discord's webhook execute endpoint requires a `content` field and rejects
-anything else with a 400. This Worker sits in between, reshapes the payload,
-and forwards it to Discord — so notes show up as clean chat messages with a
+Discord expects its own webhook message shape. This Worker sits in between,
+reshapes the payload, and forwards it to Discord so each note appears as a
+compact, branded embed with the Brain Dump icon, a colored accent, and a subtle
 timestamp that renders correctly in each viewer's own timezone.
 
 > Note: a native "Discord format" option has since been proposed upstream —
@@ -26,29 +26,50 @@ timestamp that renders correctly in each viewer's own timezone.
 ## How it works
 
 1. Brain Dump POSTs `{ text, timestamp }` to this Worker's URL.
-2. The Worker builds `{ content: "<text>\n_(<t:<timestamp>:f>)_" }` — the
-   `<t:...:f>` bit is Discord's native timestamp markup, which Discord
-   renders client-side in each viewer's own local timezone.
+2. The Worker builds a Discord embed containing the note, the capture time,
+   and a small `Captured from Pebble` footer. Mentions are disabled so captured
+   text cannot unexpectedly ping a Discord user.
 3. The Worker POSTs that to `DISCORD_WEBHOOK_URL` and returns its result.
+
+Notes longer than Discord's 4,096-character embed limit are split across as
+many sequential messages as needed. Each footer is labeled `Part 1 of 2`,
+`Part 2 of 2`, and so on; no note text is discarded.
 
 ## Setup
 
 ```bash
-npm install -g wrangler   # if not already installed
-wrangler login            # or set CLOUDFLARE_API_TOKEN
-wrangler secret put DISCORD_WEBHOOK_URL   # paste your Discord channel webhook URL
-wrangler deploy
+npm install
+npx wrangler login            # or set CLOUDFLARE_API_TOKEN
+npx wrangler secret put DISCORD_WEBHOOK_URL   # paste your Discord channel webhook URL
+npm run deploy
 ```
 
 Then in the Brain Dump app's settings, under **Custom Webhook**:
 - **URL:** your deployed Worker URL (e.g. `https://braindump-relay.<subdomain>.workers.dev`)
 - **Method:** POST
 
-Optionally set a `BEARER_TOKEN` secret (`wrangler secret put BEARER_TOKEN`)
+Optionally set a `BEARER_TOKEN` secret (`npx wrangler secret put BEARER_TOKEN`)
 and configure the same value as the Bearer token in Brain Dump's settings
 to require auth on requests to the Worker.
 
+### Appearance options
+
+The defaults work without any extra configuration. You can optionally add
+Worker variables to customize them:
+
+- `DISCORD_USERNAME` — sender name (default: `Brain Dump`)
+- `DISCORD_AVATAR_URL` — sender icon URL (default: Brain Dump's app icon)
+- `DISCORD_EMBED_COLOR` — six-digit hex accent, such as `#7c5cff`
+
 ## Testing
+
+Run the unit tests locally:
+
+```bash
+npm test
+```
+
+To test the deployed Worker:
 
 ```bash
 curl -X POST https://<your-worker>.workers.dev \

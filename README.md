@@ -79,5 +79,6 @@ curl -X POST https://<your-worker>.workers.dev \
 
 Or just follow the setup and try it out!
 
-<img width="330" height="114" alt="image" src="https://github.com/user-attachments/assets/179f6e02-9193-42d8-a53d-65a64395534e" />
+<img width="309" height="142" alt="image" src="https://github.com/user-attachments/assets/269ba52e-dd0e-4ff0-9953-09e6a559451e" />
+
 

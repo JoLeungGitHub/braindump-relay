@@ -68,6 +68,22 @@ function parseColor(value) {
     : 0xff9900;
 }
 
+export function buildDiscordWebhookUrl(value) {
+  const url = new URL(value);
+
+  // URLSearchParams is case-sensitive, but Discord's parameter name is not
+  // useful in duplicate variants. Remove any existing spelling before forcing
+  // confirmed delivery.
+  for (const key of [...url.searchParams.keys()]) {
+    if (key.toLowerCase() === 'wait') {
+      url.searchParams.delete(key);
+    }
+  }
+
+  url.searchParams.set('wait', 'true');
+  return url.toString();
+}
+
 export function createDiscordPayloads(body, env = {}) {
   const chunks = splitNote(body?.text);
   const timestamp = formatTimestamp(body?.timestamp);
@@ -125,8 +141,9 @@ export default {
     }
 
     const payloads = createDiscordPayloads(body, env);
+    const discordWebhookUrl = buildDiscordWebhookUrl(env.DISCORD_WEBHOOK_URL);
     for (const payload of payloads) {
-      const discordResp = await fetch(env.DISCORD_WEBHOOK_URL, {
+      const discordResp = await fetch(discordWebhookUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),

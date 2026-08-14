@@ -1,7 +1,25 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import worker, { createDiscordPayloads } from '../src/index.js';
+import worker, {
+  buildDiscordWebhookUrl,
+  createDiscordPayloads,
+} from '../src/index.js';
+
+test('requests confirmed Discord delivery while preserving webhook parameters', () => {
+  assert.equal(
+    buildDiscordWebhookUrl('https://discord.example/webhook'),
+    'https://discord.example/webhook?wait=true',
+  );
+  assert.equal(
+    buildDiscordWebhookUrl('https://discord.example/webhook?thread_id=123&wait=false'),
+    'https://discord.example/webhook?thread_id=123&wait=true',
+  );
+  assert.equal(
+    buildDiscordWebhookUrl('https://discord.example/webhook?WAIT=false'),
+    'https://discord.example/webhook?wait=true',
+  );
+});
 
 test('builds a branded Discord embed from a Brain Dump note', () => {
   const [payload] = createDiscordPayloads({
@@ -51,7 +69,7 @@ test('forwards the embed payload to Discord', async (t) => {
   let forwarded;
   t.mock.method(globalThis, 'fetch', async (url, init) => {
     forwarded = { url, init };
-    return new Response(null, { status: 204 });
+    return Response.json({ id: 'message-1' });
   });
 
   const response = await worker.fetch(
@@ -70,7 +88,7 @@ test('forwards the embed payload to Discord', async (t) => {
   );
 
   assert.equal(response.status, 200);
-  assert.equal(forwarded.url, 'https://discord.example/webhook');
+  assert.equal(forwarded.url, 'https://discord.example/webhook?wait=true');
   assert.equal(forwarded.init.method, 'POST');
   assert.equal(JSON.parse(forwarded.init.body).embeds[0].description, 'A useful thought');
 });
@@ -79,7 +97,7 @@ test('forwards every part of a long note as a separate message in order', async 
   const forwarded = [];
   t.mock.method(globalThis, 'fetch', async (url, init) => {
     forwarded.push({ url, payload: JSON.parse(init.body) });
-    return new Response(null, { status: 204 });
+    return Response.json({ id: `message-${forwarded.length}` });
   });
 
   const note = `${'first'.repeat(1000)} and the rest`;
@@ -95,6 +113,10 @@ test('forwards every part of a long note as a separate message in order', async 
   assert.equal(response.status, 200);
   assert.equal(await response.text(), 'ok (2 messages)');
   assert.equal(forwarded.length, 2);
+  assert.equal(
+    forwarded.every(({ url }) => url === 'https://discord.example/webhook?wait=true'),
+    true,
+  );
   assert.equal(
     forwarded.map(({ payload }) => payload.embeds[0].description).join(''),
     note,

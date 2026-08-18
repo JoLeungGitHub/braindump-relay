@@ -1,6 +1,8 @@
 // Relay for the Pebble Brain Dump app's Custom Webhook feature.
 // Brain Dump POSTs { text, timestamp }; this reshapes it into a Discord embed.
 
+import { landingPageCss, renderLandingPage } from './landing.js';
+
 const MAX_DESCRIPTION_LENGTH = 4096;
 const DELIVERY_STATE_KEY = 'delivery';
 const DELIVERY_STATE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -268,10 +270,42 @@ export class MultipartDelivery {
 
 export default {
   async fetch(req, env) {
+    const url = new URL(req.url);
+    if (req.method === 'GET' || req.method === 'HEAD') {
+      if (url.pathname === '/' || url.pathname === '/index.html') {
+        return new Response(req.method === 'HEAD' ? null : renderLandingPage(req.url), {
+          headers: {
+            'Cache-Control': 'public, max-age=300',
+            'Content-Security-Policy': "default-src 'none'; style-src 'self'; img-src 'self' https://raw.githubusercontent.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+            'Content-Type': 'text/html; charset=utf-8',
+            'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
+            'Referrer-Policy': 'strict-origin-when-cross-origin',
+            'X-Content-Type-Options': 'nosniff',
+          },
+        });
+      }
+
+      if (url.pathname === '/styles.css') {
+        return new Response(req.method === 'HEAD' ? null : landingPageCss, {
+          headers: {
+            'Cache-Control': 'public, max-age=86400',
+            'Content-Type': 'text/css; charset=utf-8',
+            'X-Content-Type-Options': 'nosniff',
+          },
+        });
+      }
+
+      if (url.pathname === '/og.png' && env.ASSETS) {
+        return env.ASSETS.fetch(req);
+      }
+
+      return new Response('not found', { status: 404 });
+    }
+
     if (req.method !== 'POST') {
-      return new Response('braindump-relay: POST only', {
+      return new Response('method not allowed', {
         status: 405,
-        headers: { Allow: 'POST' },
+        headers: { Allow: 'GET, HEAD, POST' },
       });
     }
 

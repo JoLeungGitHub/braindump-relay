@@ -53,6 +53,71 @@ function addMultipartBinding(env) {
   return env;
 }
 
+test('serves the project landing page without touching Discord', async (t) => {
+  const fetchMock = t.mock.method(globalThis, 'fetch', async () => new Response(null));
+  const response = await worker.fetch(new Request('https://relay.example/'), {});
+  const html = await response.text();
+
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get('Content-Type'), 'text/html; charset=utf-8');
+  assert.match(html, /<title>Brain Dump Relay/);
+  assert.match(html, /Your thoughts,[\s\S]*bridged[\s\S]*to Discord\./);
+  assert.match(html, /Native Discord support has merged/);
+  assert.match(html, /pebble-brain-dump-app\/pull\/7/);
+  assert.match(html, /property="og:image" content="https:\/\/relay\.example\/og\.png"/);
+  assert.match(html, /name="twitter:card" content="summary_large_image"/);
+  assert.doesNotMatch(html, /datetime="2026-08-18/);
+  assert.equal(
+    response.headers.get('Content-Security-Policy').includes("style-src 'self'"),
+    true,
+  );
+  assert.equal(fetchMock.mock.callCount(), 0);
+});
+
+test('serves the responsive landing page stylesheet', async () => {
+  const response = await worker.fetch(
+    new Request('https://relay.example/styles.css'),
+    {},
+  );
+  const css = await response.text();
+
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get('Content-Type'), 'text/css; charset=utf-8');
+  assert.match(css, /@media \(max-width: 760px\)/);
+  assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
+  assert.match(css, /--orange: #ff9900/);
+});
+
+test('keeps unknown landing-page routes closed', async () => {
+  const response = await worker.fetch(
+    new Request('https://relay.example/not-a-page'),
+    {},
+  );
+
+  assert.equal(response.status, 404);
+});
+
+test('serves the generated social preview through the asset binding', async () => {
+  let assetRequest;
+  const response = await worker.fetch(
+    new Request('https://relay.example/og.png'),
+    {
+      ASSETS: {
+        async fetch(request) {
+          assetRequest = request;
+          return new Response('png-data', {
+            headers: { 'Content-Type': 'image/png' },
+          });
+        },
+      },
+    },
+  );
+
+  assert.equal(assetRequest.url, 'https://relay.example/og.png');
+  assert.equal(response.headers.get('Content-Type'), 'image/png');
+  assert.equal(await response.text(), 'png-data');
+});
+
 test('requests confirmed Discord delivery while preserving webhook parameters', () => {
   assert.equal(
     buildDiscordWebhookUrl('https://discord.example/webhook'),

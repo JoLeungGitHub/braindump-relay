@@ -18,10 +18,10 @@ reshapes the payload, and forwards it to Discord so each note appears as a
 compact, branded embed with the Brain Dump icon, a colored accent, and a subtle
 timestamp that renders correctly in each viewer's own timezone.
 
-> Note: a native "Discord format" option has since been proposed upstream —
-> see [pebble-brain-dump-app#7](https://github.com/adrienthiery/pebble-brain-dump-app/pull/7).
-> If/when that merges, this relay becomes optional (you can point Brain Dump
-> straight at your Discord webhook).
+> Note: a native Discord destination has now merged upstream — see
+> [pebble-brain-dump-app#7](https://github.com/adrienthiery/pebble-brain-dump-app/pull/7).
+> It has not shipped in an app release yet, so the relay remains useful for now.
+> Once that update lands, Brain Dump can point straight at the Discord webhook.
 
 ## How it works
 
@@ -30,6 +30,9 @@ timestamp that renders correctly in each viewer's own timezone.
    Mentions are disabled so captured text cannot unexpectedly ping a Discord
    user.
 3. The Worker POSTs that to `DISCORD_WEBHOOK_URL` and returns its result.
+
+Opening the Worker URL in a browser serves the project landing page. `POST`
+requests continue to use the relay API described above.
 
 Notes longer than Discord's 4,096-character embed limit are split across as
 many sequential messages as needed. Each footer is labeled `Part 1 of 2`,

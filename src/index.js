@@ -2,6 +2,8 @@
 // Brain Dump POSTs { text, timestamp }; this reshapes it into a Discord embed.
 
 const MAX_DESCRIPTION_LENGTH = 4096;
+const DELIVERY_STATE_KEY = 'delivery';
+const DELIVERY_STATE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const DEFAULT_AVATAR_URL =
   'https://raw.githubusercontent.com/adrienthiery/pebble-brain-dump-app/main/icon_144x144.png';
 
@@ -112,6 +114,158 @@ export function createDiscordPayloads(body, env = {}) {
   });
 }
 
+export async function createMultipartDeliveryKey(value) {
+  const note = value === undefined || value === null ? '' : String(value);
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(note));
+  return [...new Uint8Array(digest)]
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+export async function getDiscordRetryDelayMs(response) {
+  let retryAfter = null;
+
+  try {
+    const body = await response.clone().json();
+    if (body.retry_after !== undefined) {
+      retryAfter = Number(body.retry_after);
+    }
+  } catch {
+    // Discord also provides Retry-After, so a non-JSON body is still usable.
+  }
+
+  if (!(retryAfter >= 0)) {
+    retryAfter = Number(response.headers.get('Retry-After'));
+  }
+  if (!(retryAfter >= 0)) {
+    retryAfter = 1;
+  }
+
+  return Math.ceil(retryAfter * 1000);
+}
+
+function sleep(milliseconds) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+export async function sendDiscordPayload(
+  webhookUrl,
+  payload,
+  { fetchImpl = fetch, sleepImpl = sleep } = {},
+) {
+  for (let attempt = 0; attempt <= 1; attempt += 1) {
+    const response = await fetchImpl(webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
+    if (response.status !== 429 || attempt === 1) {
+      return response;
+    }
+
+    await sleepImpl(await getDiscordRetryDelayMs(response));
+  }
+
+  throw new Error('unreachable');
+}
+
+async function discordErrorResponse(response) {
+  const errText = await response.text();
+  return {
+    status: 502,
+    body: `discord error ${response.status}: ${errText}`,
+  };
+}
+
+// Multipart progress must survive a separate upstream retry. One Durable Object
+// is selected per note text and stores only an incomplete delivery. A retry with
+// the same text resumes at the first part Discord has not confirmed.
+export class MultipartDelivery {
+  constructor(state, env) {
+    this.state = state;
+    this.env = env;
+    this.inFlight = null;
+  }
+
+  async fetch(request) {
+    if (request.method !== 'POST') {
+      return new Response('multipart delivery: POST only', { status: 405 });
+    }
+
+    let incoming;
+    try {
+      incoming = await request.json();
+    } catch {
+      return new Response('bad multipart delivery', { status: 400 });
+    }
+
+    if (!Array.isArray(incoming.payloads) || incoming.payloads.length < 2) {
+      return new Response('bad multipart delivery', { status: 400 });
+    }
+
+    // Concurrent retries for the same note share one delivery attempt.
+    if (!this.inFlight) {
+      this.inFlight = this.deliver(incoming)
+        .finally(() => { this.inFlight = null; });
+    }
+
+    const result = await this.inFlight;
+    return new Response(result.body, { status: result.status });
+  }
+
+  async deliver(incoming) {
+    let delivery = await this.state.storage.get(DELIVERY_STATE_KEY);
+    const now = Date.now();
+
+    if (!delivery || delivery.expiresAt <= now) {
+      delivery = {
+        payloads: incoming.payloads,
+        nextPart: 0,
+        expiresAt: now + DELIVERY_STATE_TTL_MS,
+      };
+      await this.state.storage.put(DELIVERY_STATE_KEY, delivery);
+      if (this.state.storage.setAlarm) {
+        await this.state.storage.setAlarm(delivery.expiresAt);
+      }
+    }
+
+    const webhookUrl = buildDiscordWebhookUrl(this.env.DISCORD_WEBHOOK_URL);
+    while (delivery.nextPart < delivery.payloads.length) {
+      let response;
+      try {
+        response = await sendDiscordPayload(
+          webhookUrl,
+          delivery.payloads[delivery.nextPart],
+        );
+      } catch (error) {
+        return { status: 502, body: `discord network error: ${error.message}` };
+      }
+
+      if (!response.ok) {
+        return discordErrorResponse(response);
+      }
+
+      delivery.nextPart += 1;
+      delivery.expiresAt = Date.now() + DELIVERY_STATE_TTL_MS;
+      await this.state.storage.put(DELIVERY_STATE_KEY, delivery);
+      if (this.state.storage.setAlarm) {
+        await this.state.storage.setAlarm(delivery.expiresAt);
+      }
+    }
+
+    await this.state.storage.delete(DELIVERY_STATE_KEY);
+    if (this.state.storage.deleteAlarm) {
+      await this.state.storage.deleteAlarm();
+    }
+    return { status: 200, body: `ok (${delivery.payloads.length} messages)` };
+  }
+
+  async alarm() {
+    await this.state.storage.delete(DELIVERY_STATE_KEY);
+  }
+}
+
 export default {
   async fetch(req, env) {
     if (req.method !== 'POST') {
@@ -142,19 +296,33 @@ export default {
 
     const payloads = createDiscordPayloads(body, env);
     const discordWebhookUrl = buildDiscordWebhookUrl(env.DISCORD_WEBHOOK_URL);
-    for (const payload of payloads) {
-      const discordResp = await fetch(discordWebhookUrl, {
+
+    if (payloads.length > 1) {
+      if (!env.MULTIPART_DELIVERIES) {
+        return new Response('missing MULTIPART_DELIVERIES binding', { status: 500 });
+      }
+
+      const deliveryKey = await createMultipartDeliveryKey(body?.text);
+      const delivery = env.MULTIPART_DELIVERIES.getByName(deliveryKey);
+      return delivery.fetch('https://multipart-delivery.internal', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ payloads }),
       });
-
-      if (!discordResp.ok) {
-        const errText = await discordResp.text();
-        return new Response(`discord error ${discordResp.status}: ${errText}`, { status: 502 });
-      }
     }
 
-    return new Response(payloads.length === 1 ? 'ok' : `ok (${payloads.length} messages)`);
+    let discordResp;
+    try {
+      discordResp = await sendDiscordPayload(discordWebhookUrl, payloads[0]);
+    } catch (error) {
+      return new Response(`discord network error: ${error.message}`, { status: 502 });
+    }
+
+    if (!discordResp.ok) {
+      const error = await discordErrorResponse(discordResp);
+      return new Response(error.body, { status: error.status });
+    }
+
+    return new Response('ok');
   },
 };

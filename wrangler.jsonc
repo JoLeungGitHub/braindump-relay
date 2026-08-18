@@ -2,5 +2,19 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "braindump-relay",
   "main": "src/index.js",
-  "compatibility_date": "2025-01-01"
+  "compatibility_date": "2025-01-01",
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "MULTIPART_DELIVERIES",
+        "class_name": "MultipartDelivery"
+      }
+    ]
+  },
+  "exports": {
+    "MultipartDelivery": {
+      "type": "durable-object",
+      "storage": "sqlite"
+    }
+  }
 }

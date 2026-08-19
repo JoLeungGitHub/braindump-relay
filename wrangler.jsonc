@@ -3,6 +3,12 @@
   "name": "braindump-relay",
   "main": "src/index.js",
   "compatibility_date": "2025-01-01",
+  "routes": [
+    {
+      "pattern": "relay.joleu.ng",
+      "custom_domain": true
+    }
+  ],
   "assets": {
     "directory": "./public",
     "binding": "ASSETS",

@@ -3,6 +3,7 @@
   "name": "braindump-relay",
   "main": "src/index.js",
   "compatibility_date": "2025-01-01",
+  "workers_dev": true,
   "routes": [
     {
       "pattern": "relay.joleu.ng",
